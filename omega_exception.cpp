@@ -1,3 +1,6 @@
+//Source: https://godbolt.org/z/YsWEoczsW
+//Presentation: https://www.youtube.com/watch?v=Oy-VTqz1_58
+
 #include <cassert>
 #include <future>
 #include <iostream>
