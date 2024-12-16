@@ -167,14 +167,14 @@ public:
 
 // Our enhanced exception class that uses the hybrid stack trace
 template<typename DATA_T, size_t MaxFrames = 32>
-class OmegaException {
+class AlphaException {
     std::string err_str;
     DATA_T data_;
     CompileTimeFrame location_;
     HybridStackTrace<MaxFrames> backtrace_;
 
 public:
-    OmegaException(const char* str, 
+    AlphaException(const char* str, 
                    const DATA_T& data,
                    const CompileTimeFrame& loc = CompileTimeFrame{},
                    const HybridStackTrace<MaxFrames>& trace = HybridStackTrace<MaxFrames>{})
@@ -191,7 +191,7 @@ public:
 };
 
 // Business logic starts here
-using MyExceptionErrsVoid = OmegaException<std::nullptr_t>;
+using MyExceptionErrsVoid = AlphaException<std::nullptr_t>;
 
 struct Order {
     unsigned int id_;
