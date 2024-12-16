@@ -211,9 +211,10 @@ This implementation builds upon the OmegaException concept presented by Peter Mu
 - Secondary Compiler Support: GCC 13.2.0 and later
 
 
-## 10. Running Examples:
+## Running Examples:
 
 To run these, try following compiler flags. Note that the full stack trace has only been tested with x86-64 gcc 13.2 and x86-64 clang 18.1.0, as libbacktrace is not built for every version of every compiler on godbolt.
+
 [https://godbolt.org/z/oE1GvKPqK](https://godbolt.org/z/ha4TcE499)
 
 
