@@ -1,5 +1,12 @@
-//Source: https://godbolt.org/z/YsWEoczsW
+//Source: https://godbolt.org/z/M13Yddcvf
 //Presentation: https://www.youtube.com/watch?v=Oy-VTqz1_58
+
+//NOTES:
+//Requires C++23
+//Depends on libbacktrace: https://github.com/ianlancetaylor/libbacktrace
+//Note that this library may not work on embedded hardware
+//Note that godbolt will work with these parameters: --std=c++23 -lstdc++_libbacktrace (on x86-64 gcc 13.2)
+//Note that godbolt may not include builds of backtrace for every compiler or every version
 
 #include <cassert>
 #include <future>
