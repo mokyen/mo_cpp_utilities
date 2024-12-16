@@ -219,6 +219,7 @@ To run these, try following compiler flags. Note that the full stack trace has o
 
 ### Debug build with full stack trace
 -std=c++23 -DDEBUG_BUILD -pthread -lstdc++_libbacktrace
+
 NOTE: If using clang, the `-fsized-deallocation` flag must also be added
 
 ### Production build with custom stack trace
