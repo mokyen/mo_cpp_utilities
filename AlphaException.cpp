@@ -1,22 +1,32 @@
-#include <cassert>
-#include <iostream>
-#include <memory>
-#include <string>
-#include <string_view>
-#include <vector>
-#include <map>
-#include <source_location>
-#include <sstream>
+#ifndef ALPHA_EXCEPTION_HPP
+#define ALPHA_EXCEPTION_HPP
 
-// Platform detection and capability definitions
+#include <string>
+#include <sstream>
+#include <vector>
+#include <source_location>
+#include <thread>
+
+// Platform and compiler detection
 #if defined(YOCTO_BUILD)
     #if defined(HAVE_LIBBACKTRACE)
         #define FULL_STACK_TRACE_CAPABLE 1
     #else
         #define FULL_STACK_TRACE_CAPABLE 0
     #endif
+#elif defined(__clang__)
+    #if defined(_LIBCPP_VERSION) && defined(DEBUG_BUILD)
+        #define FULL_STACK_TRACE_CAPABLE 1
+        #define USE_LIBCXX_STACKTRACE 1
+        #include <__stacktrace/stacktrace.h>
+    #else
+        #define FULL_STACK_TRACE_CAPABLE 0
+    #endif
 #elif defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
     #define FULL_STACK_TRACE_CAPABLE 1
+    #ifdef DEBUG_BUILD
+        #include <stacktrace>
+    #endif
 #else
     #define FULL_STACK_TRACE_CAPABLE 0
 #endif
@@ -28,16 +38,16 @@
     #define MINIMAL_STACK_TRACE 0
 #endif
 
-// Stack trace configuration based on build type and platform capabilities
+// Stack trace mode selection
 #if defined(DEBUG_BUILD) && FULL_STACK_TRACE_CAPABLE
-    #include <stacktrace>
-    #define STACK_TRACE_MODE 2  // Full stack trace with libbacktrace
+    #define STACK_TRACE_MODE 2  // Full stack trace
 #elif !MINIMAL_STACK_TRACE
-    #define STACK_TRACE_MODE 1  // Custom stack trace implementation
+    #define STACK_TRACE_MODE 1  // Custom stack trace
 #else
-    #define STACK_TRACE_MODE 0  // Minimal stack trace (just current location)
+    #define STACK_TRACE_MODE 0  // Minimal trace
 #endif
 
+// Compile-time frame information
 struct CompileTimeFrame {
     const char* function_name;
     const char* file_name;
@@ -63,6 +73,7 @@ struct CompileTimeFrame {
 };
 
 #if STACK_TRACE_MODE == 1
+    // Custom stack trace implementation
     class StackTrace {
         std::vector<CompileTimeFrame> frames_;
 
@@ -108,17 +119,22 @@ struct CompileTimeFrame {
     };
 #endif
 
+// The main exception class template
 template<typename DATA_T>
 class AlphaException {
     std::string err_str;
     DATA_T data_;
     CompileTimeFrame location_;
     
-    #if STACK_TRACE_MODE == 2
+#if STACK_TRACE_MODE == 2
+    #ifdef USE_LIBCXX_STACKTRACE
         std::stacktrace debug_backtrace_;
-    #elif STACK_TRACE_MODE == 1
-        StackTrace production_backtrace_;
+    #else
+        std::stacktrace debug_backtrace_;
     #endif
+#elif STACK_TRACE_MODE == 1
+    StackTrace production_backtrace_;
+#endif
 
 public:
     AlphaException(const char* str, const DATA_T& data,
@@ -151,7 +167,11 @@ public:
     }
 
     #if STACK_TRACE_MODE == 2
-        const std::stacktrace& stack() const { return debug_backtrace_; }
+        #ifdef USE_LIBCXX_STACKTRACE
+            const std::stacktrace& stack() const { return debug_backtrace_; }
+        #else
+            const std::stacktrace& stack() const { return debug_backtrace_; }
+        #endif
     #elif STACK_TRACE_MODE == 1
         const StackTrace& stack() const { return production_backtrace_; }
     #else
@@ -164,3 +184,5 @@ public:
 #else
     #define TRACE_FUNCTION() ((void)0)
 #endif
+
+#endif // ALPHA_EXCEPTION_HPP
