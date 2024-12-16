@@ -1,57 +1,3 @@
-/*
-  This is a feature-rich exception class that gives lots of information for developers.
-  This code is derived from the OmegaException presented by Peter Muldoon at CppCon 2023
-  See the omega_exception.cpp in this repo for links. It's named Alpha because it continues
-  from Omega and wraps around the alphabet.
-
-  Unlike the OmegaException, this class does not depend on external libraries. It attempts
-  to gather as much stack information as possible at compile time.
-
-  This implementation could be implemented with a PIMPL idiom or #defines to switch it out
-  for release builds to avoid performance hits, but it's expected that this could would be
-  relatively performant.
-
-  ** Details **
-  This implementation provides several key advantages:
-  
-  Compile-Time Optimization:
-  
-  The CompileTimeFrame structure captures source location information at compile time
-  The CompileTimeStackTrace provides a fixed-size container that can be populated at compile time
-  Static frame information is stored in the static frames array, avoiding runtime allocations
-  
-  
-  Runtime Flexibility:
-  
-  The HybridStackTrace combines both compile-time and runtime information
-  Dynamic frames can be added and removed as needed during program execution
-  The RAII guard pattern ensures proper cleanup of dynamic frames
-  
-  
-  Enhanced Debugging:
-  
-  Both static and dynamic frames are clearly labeled in the output
-  The full call stack is preserved, showing both compile-time and runtime information
-  Source location information includes file, line, column, and function name
-  
-  
-  Thread Safety:
-  
-  The thread-local storage ensures that stack traces are thread-safe
-  Each thread maintains its own independent stack trace
-  
-  
-  
-  The system provides a good balance between performance and functionality:
-  
-  Compile-time information is captured with no runtime overhead
-  Runtime information is added only when needed
-  Memory allocation is minimized by using fixed-size arrays where possible
-  The RAII pattern ensures proper resource management
-*/
-
-
-
 #include <cassert>
 #include <iostream>
 #include <memory>
@@ -62,14 +8,42 @@
 #include <source_location>
 #include <sstream>
 
-// First, we define our compile-time frame structure that captures source location information
+// Platform detection and capability definitions
+#if defined(YOCTO_BUILD)
+    #if defined(HAVE_LIBBACKTRACE)
+        #define FULL_STACK_TRACE_CAPABLE 1
+    #else
+        #define FULL_STACK_TRACE_CAPABLE 0
+    #endif
+#elif defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
+    #define FULL_STACK_TRACE_CAPABLE 1
+#else
+    #define FULL_STACK_TRACE_CAPABLE 0
+#endif
+
+// Memory constraints detection
+#if defined(__AVR__) || defined(__MSP430__) || defined(MINIMAL_RESOURCES)
+    #define MINIMAL_STACK_TRACE 1
+#else
+    #define MINIMAL_STACK_TRACE 0
+#endif
+
+// Stack trace configuration based on build type and platform capabilities
+#if defined(DEBUG_BUILD) && FULL_STACK_TRACE_CAPABLE
+    #include <stacktrace>
+    #define STACK_TRACE_MODE 2  // Full stack trace with libbacktrace
+#elif !MINIMAL_STACK_TRACE
+    #define STACK_TRACE_MODE 1  // Custom stack trace implementation
+#else
+    #define STACK_TRACE_MODE 0  // Minimal stack trace (just current location)
+#endif
+
 struct CompileTimeFrame {
     const char* function_name;
     const char* file_name;
     unsigned int line;
     unsigned int column;
     
-    // Captures location information at compile time using constexpr
     constexpr CompileTimeFrame(const std::source_location& loc = 
                               std::source_location::current()) noexcept
         : function_name(loc.function_name())
@@ -78,191 +52,115 @@ struct CompileTimeFrame {
         , column(loc.column())
     {}
 
-    // Stream operator for CompileTimeFrame to enable easy printing
     template<typename CharT, typename Traits>
     friend std::basic_ostream<CharT, Traits>& operator<<(
         std::basic_ostream<CharT, Traits>& os, 
         const CompileTimeFrame& frame) {
-        os << frame.file_name << "(" << frame.line << ":" 
+        os << frame.file_name << "(" << frame.line << ":"
            << frame.column << ") `" << frame.function_name << "`";
         return os;
     }
 };
 
-// A fixed-size container for stack frames that can be populated at compile time
-template<size_t N>
-class CompileTimeStackTrace {
-    CompileTimeFrame frames_[N];
-    size_t current_size_ = 0;
+#if STACK_TRACE_MODE == 1
+    class StackTrace {
+        std::vector<CompileTimeFrame> frames_;
 
-public:
-    constexpr void push_frame(const CompileTimeFrame& frame) {
-        if (current_size_ < N) {
-            frames_[current_size_++] = frame;
+    public:
+        void push_frame(const CompileTimeFrame& frame) {
+            frames_.push_back(frame);
         }
-    }
 
-    constexpr const CompileTimeFrame* begin() const { return frames_; }
-    constexpr const CompileTimeFrame* end() const { return frames_ + current_size_; }
-    constexpr size_t size() const { return current_size_; }
-};
-
-// Our hybrid stack trace that combines compile-time and runtime information
-template<size_t N>
-class HybridStackTrace {
-    CompileTimeStackTrace<N> static_frames_;
-    std::vector<CompileTimeFrame> dynamic_frames_;
-
-public:
-    // Constructor that captures the initial frame at compile time
-    constexpr HybridStackTrace(const CompileTimeFrame& frame = CompileTimeFrame{}) {
-        static_frames_.push_frame(frame);
-    }
-
-    // Add runtime frame information when needed
-    void add_dynamic_frame(const CompileTimeFrame& frame) {
-        dynamic_frames_.push_back(frame);
-    }
-
-    // Remove the most recent dynamic frame
-    void pop_dynamic_frame() {
-        if (!dynamic_frames_.empty()) {
-            dynamic_frames_.pop_back();
+        void pop_frame() {
+            if (!frames_.empty()) {
+                frames_.pop_back();
+            }
         }
-    }
 
-    // Stream operator for the hybrid stack trace
-    template<typename CharT, typename Traits>
-    friend std::basic_ostream<CharT, Traits>& operator<<(
-        std::basic_ostream<CharT, Traits>& os,
-        const HybridStackTrace& trace) {
-        // Print static frames first
-        for (const auto& frame : trace.static_frames_) {
-            os << "Static: " << frame << "\n";
+        const std::vector<CompileTimeFrame>& frames() const { return frames_; }
+
+        template<typename CharT, typename Traits>
+        friend std::basic_ostream<CharT, Traits>& operator<<(
+            std::basic_ostream<CharT, Traits>& os,
+            const StackTrace& trace) {
+            for (const auto& frame : trace.frames()) {
+                os << frame << "\n";
+            }
+            return os;
         }
-        // Then print dynamic frames
-        for (const auto& frame : trace.dynamic_frames_) {
-            os << "Dynamic: " << frame << "\n";
+    };
+
+    thread_local StackTrace current_trace;
+
+    class StackGuard {
+        StackTrace& trace_;
+
+    public:
+        explicit StackGuard(StackTrace& trace, 
+                        const std::source_location& loc = std::source_location::current())
+            : trace_(trace) {
+            trace_.push_frame(CompileTimeFrame{loc});
         }
-        return os;
-    }
-};
+        
+        ~StackGuard() {
+            trace_.pop_frame();
+        }
+    };
+#endif
 
-// RAII guard for managing dynamic frames
-template<size_t N>
-class StackFrameGuard {
-    HybridStackTrace<N>& trace_;
-
-public:
-    StackFrameGuard(HybridStackTrace<N>& trace, 
-                    const CompileTimeFrame& frame = CompileTimeFrame{})
-        : trace_(trace) {
-        trace_.add_dynamic_frame(frame);
-    }
-    
-    ~StackFrameGuard() {
-        trace_.pop_dynamic_frame();
-    }
-};
-
-// Our enhanced exception class that uses the hybrid stack trace
-template<typename DATA_T, size_t MaxFrames = 32>
-class AlphaException {
+template<typename DATA_T>
+class OmegaException {
     std::string err_str;
     DATA_T data_;
     CompileTimeFrame location_;
-    HybridStackTrace<MaxFrames> backtrace_;
+    
+    #if STACK_TRACE_MODE == 2
+        std::stacktrace debug_backtrace_;
+    #elif STACK_TRACE_MODE == 1
+        StackTrace production_backtrace_;
+    #endif
 
 public:
-    AlphaException(const char* str, 
-                   const DATA_T& data,
-                   const CompileTimeFrame& loc = CompileTimeFrame{},
-                   const HybridStackTrace<MaxFrames>& trace = HybridStackTrace<MaxFrames>{})
+    OmegaException(const char* str, const DATA_T& data,
+                   const std::source_location& loc = std::source_location::current())
         : err_str(str)
         , data_(data)
         , location_(loc)
-        , backtrace_(trace)
+        #if STACK_TRACE_MODE == 2
+            , debug_backtrace_(std::stacktrace::current())
+        #elif STACK_TRACE_MODE == 1
+            , production_backtrace_(current_trace)
+        #endif
     {}
 
     const DATA_T& data() const noexcept { return data_; }
     const std::string& what() const noexcept { return err_str; }
     const CompileTimeFrame& where() const { return location_; }
-    const HybridStackTrace<MaxFrames>& stack() const { return backtrace_; }
+
+    template<typename CharT, typename Traits>
+    friend std::basic_ostream<CharT, Traits>& operator<<(
+        std::basic_ostream<CharT, Traits>& os,
+        const OmegaException& e) {
+        os << "Exception: " << e.what() << "\nLocation: " << e.where();
+        #if STACK_TRACE_MODE == 2
+            os << "\nStack trace:\n" << e.debug_backtrace_;
+        #elif STACK_TRACE_MODE == 1
+            os << "\nStack trace:\n" << e.production_backtrace_;
+        #endif
+        return os;
+    }
+
+    #if STACK_TRACE_MODE == 2
+        const std::stacktrace& stack() const { return debug_backtrace_; }
+    #elif STACK_TRACE_MODE == 1
+        const StackTrace& stack() const { return production_backtrace_; }
+    #else
+        const CompileTimeFrame& stack() const { return location_; }
+    #endif
 };
 
-// Business logic starts here
-using MyExceptionErrsVoid = AlphaException<std::nullptr_t>;
-
-struct Order {
-    unsigned int id_;
-    double value_;
-};
-
-std::ostream& operator<<(std::ostream& os, const Order& order) {
-    os << "value : " << order.value_;
-    return os;
-}
-
-// Global storage for orders
-std::map<unsigned int, Order> orders{{1,Order{1,2.0}},{11, Order{11,5.0}}};
-
-// Thread-local storage for the stack trace
-thread_local HybridStackTrace<32> current_trace;
-
-Order UpdateOrder(const Order& ord) {
-    // Create a guard that will automatically manage the dynamic frame
-    StackFrameGuard guard(current_trace);
-    
-    auto it = orders.find(ord.id_);
-    if(it == orders.end())
-        throw MyExceptionErrsVoid("update error : ", 
-                                 nullptr, 
-                                 CompileTimeFrame{},
-                                 current_trace);
-    return it->second = ord;
-}
-
-Order findOrder(unsigned int id) {
-    StackFrameGuard guard(current_trace);
-    
-    auto it = orders.find(id);
-    if(it == orders.end())
-        throw MyExceptionErrsVoid("Bad Order id", 
-                                 nullptr, 
-                                 CompileTimeFrame{},
-                                 current_trace);
-    return it->second;
-}
-
-bool processOrder(unsigned int id) {
-    StackFrameGuard guard(current_trace);
-    
-    try {
-        Order ord = findOrder(id);
-        std::cout << "Found order id : " << id << " : " << ord << std::endl;
-        return true;
-    }
-    catch(MyExceptionErrsVoid& e) {
-        std::cout << "[where] Failed to process : " << e.what() 
-                 << " : " << e.where() << std::endl;
-        std::cout << "[stack] Failed to process : " << e.what() << "\n" 
-                 << e.stack() << std::endl;
-    }
-    return false;
-}
-
-int main() {
-    try {
-        unsigned int id = 10;
-        // Create a guard for main's stack frame
-        StackFrameGuard main_guard(current_trace);
-        
-        if(processOrder(id) == 1)
-            std::cout << "success" << std::endl;
-    }
-    catch(...) {
-        std::cout << "Unknown exception" << std::endl;
-    }
-    std::cout << "End" << std::endl;
-    return 0;
-}
+#if STACK_TRACE_MODE == 1
+    #define TRACE_FUNCTION() StackGuard _stack_guard(current_trace)
+#else
+    #define TRACE_FUNCTION() ((void)0)
+#endif
