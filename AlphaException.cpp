@@ -109,7 +109,7 @@ struct CompileTimeFrame {
 #endif
 
 template<typename DATA_T>
-class OmegaException {
+class AlphaException {
     std::string err_str;
     DATA_T data_;
     CompileTimeFrame location_;
@@ -121,7 +121,7 @@ class OmegaException {
     #endif
 
 public:
-    OmegaException(const char* str, const DATA_T& data,
+    AlphaException(const char* str, const DATA_T& data,
                    const std::source_location& loc = std::source_location::current())
         : err_str(str)
         , data_(data)
@@ -140,7 +140,7 @@ public:
     template<typename CharT, typename Traits>
     friend std::basic_ostream<CharT, Traits>& operator<<(
         std::basic_ostream<CharT, Traits>& os,
-        const OmegaException& e) {
+        const AlphaException& e) {
         os << "Exception: " << e.what() << "\nLocation: " << e.where();
         #if STACK_TRACE_MODE == 2
             os << "\nStack trace:\n" << e.debug_backtrace_;
