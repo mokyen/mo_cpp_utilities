@@ -16,6 +16,8 @@
 
 The AlphaException system is an evolution of the OmegaException concept presented by Peter Muldoon at CppCon 2023 in his talk "Exceptionally Bad: The Misuse of Exceptions in C++ & How to Do Better". The name "Alpha" symbolizes how this implementation continues from where OmegaException left off, wrapping around the alphabet to suggest an evolutionary step forward.
 
+Note that this requires C++20 or higher. The full stack version requires C++23 or higher.
+
 ### Why Extend OmegaException?
 
 While the original OmegaException demonstrated powerful exception handling capabilities through libbacktrace integration, real-world development often presents additional challenges:
@@ -274,6 +276,22 @@ The system uses preprocessor definitions to detect:
 - Compiler capabilities
 - Available libraries
 - Resource constraints
+
+## 10. Running Examples:
+
+To run these, try following compiler flags. Note that the full stack trace has only been tested with x86-64 gcc 13.2, as libbacktrace is not built for every version of every compiler.
+https://godbolt.org/z/oE1GvKPqK
+
+Note that this currently only works with gcc for the full stack trace.
+
+# Debug build with full stack trace
+-std=c++23 -DDEBUG_BUILD -pthread -lstdc++_libbacktrace
+
+# Production build with custom stack trace
+-std=c++23 -O3 -pthread
+
+# Minimal build
+-std=c++20 -DMINIMAL_RESOURCES -O3
 
 ## 10. Credits and License
 
